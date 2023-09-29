@@ -1,0 +1,118 @@
+# mongodb-secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mongodb-secrets
+type: Opaque
+data:
+  mongodb-root-password: cGFzc3dvcmQ= # Default password: password
+
+---
+# mongodb-pv.yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mongodb-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /data/mongodb
+
+---
+# mongodb-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# mongodb-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+        - name: mongodb
+          image: mongo:latest
+          ports:
+            - containerPort: 27017
+          volumeMounts:
+            - name: mongodb-persistent-storage
+              mountPath: /data/db
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              value: admin
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secrets
+                  key: mongodb-root-password
+      volumes:
+        - name: mongodb-persistent-storage
+          persistentVolumeClaim:
+            claimName: mongodb-pvc
+
+---
+# mongodb-nodeport-svc.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-nodeport-svc
+spec:
+  type: NodePort
+  ports:
+    - protocol: TCP
+      port: 27017
+      targetPort: 27017
+      nodePort: 30000
+  selector:
+    app: mongodb
+
+---
+# mongodb-client.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb-client
+  template:
+    metadata:
+      labels:
+        app: mongodb-client
+    spec:
+      containers:
+        - name: mongodb-client
+          image: mongo:latest
+          command: ["sleep", "infinity"]
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              value: admin
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secrets
+                  key: mongodb-root-password
+
